@@ -1,0 +1,12 @@
+# Everything in data/ and outputs/ is either an input or generated.
+# Nothing in either is tracked; the directory skeleton is, via .keep files.
+data/**
+outputs/**
+!data/**/
+!outputs/**/
+!**/.keep
+
+__pycache__/
+*.pyc
+catboost_info/
+.DS_Store

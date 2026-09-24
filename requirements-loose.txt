@@ -1,0 +1,13 @@
+# Unpinned fallback, if the pinned set will not build on your platform.
+# Untested: expect plotly 7 / pandas 3. Check the figures before trusting them.
+numpy>=1.23,<2
+scipy>=1.10
+scikit-learn>=1.2
+torch>=2.0
+cebra>=0.4.0
+plotly>=5.15,<7
+kaleido>=0.2.1
+tqdm>=4.65
+catboost>=1.2
+matplotlib>=3.7
+pandas>=2,<3

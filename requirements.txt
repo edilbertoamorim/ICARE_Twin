@@ -1,0 +1,21 @@
+# Verified on the versions in the comments. numpy and pandas are deliberately
+# unpinned: cebra needs numpy<2 only on Windows, this code uses no numpy-1-only
+# APIs, and hard-pinning them downgrades Colab's preinstalled stack and breaks
+# binaries compiled against numpy 2.
+
+numpy>=1.23              # tested 1.26.4
+pandas>=2,<3             # tested 2.3.3
+scipy==1.16.3
+scikit-learn==1.7.2
+joblib>=1.3              # parallel aggregation in build_dataset
+torch==2.11.0
+cebra==0.6.0
+tqdm==4.67.1
+
+plotly==6.5.0            # plotly 7 moved the multi-legend / scene APIs the figures use
+kaleido==0.2.1           # bundles its own chromium. kaleido>=1 shells out to system
+                         # Chrome, which is absent (or sandbox-blocked as root) on Colab
+
+# only needed by scripts/run_embedding_eval.py
+catboost==1.2.8
+matplotlib==3.10.7
