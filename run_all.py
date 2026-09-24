@@ -97,11 +97,20 @@ def main():
         steps = [s for s in steps if not s[4]]
 
     if not a.figures and missing(PPNET) and missing(RAW):
-        print('Missing the preprocessing inputs:')
+        def rel(p):
+            try:
+                return Path(p).relative_to(ROOT)
+            except ValueError:
+                return p
+        print('No input data found. Supply either route:\n')
+        print('  Route A -- build the dataset from raw (~54 GB, hours):')
         for p in missing(RAW):
-            print(f'   {p}')
-        print('\nThese are the only files you need to supply; everything else is')
-        print('built from them. See data/README.md. Nothing was run.')
+            print(f'     {rel(p)}')
+        print('\n  Route B -- start from the built dataset (1.6 GB, skips the build):')
+        for p in PPNET + [CLINICAL]:
+            print(f'     {rel(p)}')
+        print('\nEverything else is generated. See "Requirements" in README.md.')
+        print('Nothing was run.')
         return 1
 
     if a.list:
