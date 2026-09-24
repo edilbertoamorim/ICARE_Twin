@@ -8,7 +8,11 @@ EEG, with the figures built on them.
 Python 3.11, `pip install -r requirements.txt`. A GPU for twin training; the
 rest runs on CPU.
 
-Supply only the preprocessing inputs. Everything else is generated.
+Two ways in. They give the same results — route B just starts after the build.
+
+### Route A — from raw
+
+Everything downstream is generated.
 
 | Path | Contents |
 |---|---|
@@ -17,6 +21,20 @@ Supply only the preprocessing inputs. Everything else is generated.
 | `data/raw/offsets.csv` | time from ROSC per recording |
 | `data/tables/ICARE_clinical.csv` | age, sex, vfib, ROSC, time to arrest, CPC |
 | `data/tables/split_train.csv`, `split_test.csv` | patient-level split (one `patient_id` column) |
+
+~54 GB across ~6,500 files, and the build takes hours. Drop the two split csvs
+to let the build derive its own split.
+
+### Route B — from the built dataset
+
+| Path | Contents |
+|---|---|
+| `data/dataset/PPNet_data_train.npz`, `PPNet_data_test.npz` | route A's output, 1.6 GB |
+| `data/tables/ICARE_clinical.csv` | as above |
+
+`run_build_dataset` reports `SKIP — inputs missing` and the run starts at CEBRA.
+This is the route to hand someone who only needs results, since the two `.npz`
+files carry everything downstream reads.
 
 ## Run
 
@@ -33,6 +51,16 @@ python run_all.py --force     # rebuild everything
 python run_all.py --figures   # figures only
 python tests/smoke_test.py    # synthetic end-to-end check, ~5 min
 ```
+
+### On Colab
+
+Put `notebooks/run_pipeline_colab.ipynb` in the Drive folder holding the data
+and open it with Colab. It detects the route, clones this repo, installs, runs
+every stage, and copies results back beside the data. GPU **and high-RAM** —
+the twin peaks at ~15.9 GB, above free tier's 12.7 GB.
+
+Route A reads the raw 54 GB over the Drive mount rather than copying it, so
+the build is slower there than on a local disk.
 
 ## Steps
 
