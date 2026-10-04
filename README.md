@@ -62,6 +62,21 @@ the twin peaks at ~15.9 GB, above free tier's 12.7 GB.
 Route A reads the raw 54 GB over the Drive mount rather than copying it, so
 the build is slower there than on a local disk.
 
+### Choosing CEBRA hyperparameters (one-off)
+
+```bash
+python scripts/run_cebra_tuning.py
+```
+
+5-fold cross-validation on the training patients only (folds by patient,
+stratified by outcome); the test split is never read. Preprocessing is refit
+inside each fold. Grid and selection rule are fixed in `config.CEBRA_TUNING`
+before running. Writes `metrics/cebra/tuning_cv.csv`, `tuning_summary.csv`
+and `tuning_selected.json`. About 12 h on an M1 Pro; rerunning resumes where it
+stopped. Copy the selected values into `config.TRAIN` yourself, then rerun
+from `train CEBRA` onwards (`python run_all.py --force` or delete the CEBRA
+outputs).
+
 ## Steps
 
 | Step | In | Out | Time |

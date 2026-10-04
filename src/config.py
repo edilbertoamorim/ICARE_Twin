@@ -78,6 +78,22 @@ TRAIN = dict(
     SEED               = 42,
 )
 
+# ── CEBRA hyperparameter selection (scripts/run_cebra_tuning.py) ────
+# Chosen by patient-grouped K-fold cross-validation on the TRAINING patients
+# only; the test split is never loaded. Every grid point keeps the rest of
+# TRAIN fixed. Selection rule (pre-specified): highest mean validation-fold
+# AUROC of a logistic regression on patient-mean embeddings (all hours).
+CEBRA_TUNING = dict(
+    N_FOLDS = 5,
+    SEED    = 42,
+    GRID    = dict(
+        TEMPERATURE     = [0.1, 0.25, 0.5, 0.8, 1.0],
+        NUM_UNITS       = [16, 32, 64],
+        LABEL_KEYS_DISC = [['predictions', 'cpc_binary'],   # current: outcome-supervised
+                           ['predictions']],                # outcome-free
+    ),
+)
+
 # ── Figures ─────────────────────────────────────────────────────────
 FIG = dict(
     WINDOW  = 24,     # 2 h per waypoint
@@ -104,6 +120,8 @@ TWIN_TRAIN = dict(
 # end to end on synthetic data (tests/smoke_test.py). Never for real results.
 if os.environ.get('CEBRA_SMOKE'):
     TRAIN.update(MAX_ITER=200, BATCH_SIZE=128)
+    CEBRA_TUNING.update(N_FOLDS=2, GRID=dict(TEMPERATURE=[0.5], NUM_UNITS=[16],
+                        LABEL_KEYS_DISC=[['predictions', 'cpc_binary'], ['predictions']]))
 
 if os.environ.get('CEBRA_TWIN_SMOKE'):
     TWIN_TRAIN.update(N_REF=1, N_TWIN=1, N_ABL=1, N_CAL=1, MAX_EPOCHS=1, SUBSET=(2, 2))
