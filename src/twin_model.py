@@ -1030,6 +1030,26 @@ tblC = pd.DataFrame(rowsC); print('Table C — clinical operating points (digita
 thrs = {'0.5 (default)': 0.5, 'Youden-J optimal': youden_thr(Y, p_twin), 'high-specificity (good FPR<=0.05)': tpr_at_fpr(Y, p_twin, 0.05)[1]}
 tblD = pd.DataFrame({name: thr_metrics(Y, p_twin, t) for name, t in thrs.items()}).T.round(4)
 print('Table D — threshold operating points (digital twin, good direction):'); display(tblD)
+# Table K — does the seed ensemble beat its members? Each twin seed is scored alone on the same test
+# patients (full recording, read at the last observed block) and against the ensemble with a paired bootstrap.
+_pstep(f'Table K — {len(TW)} single seeds vs the ensemble')
+_seed_logit = [predict_twin(m, Xf_te, bmte)[0][np.arange(len(Y)), lb.clip(0)] for m in TW]
+_rows = []
+for _i, _z in enumerate(_bar(_seed_logit, 'single-seed scoring', total=len(TW), unit='seed')):
+    _ps = _sig(_z); _r = dict(model=f'seed {_i}', AUROC=_auroc(Y, _ps), AUPRC=_auprc(Y, _ps), Brier=_brier(Y, _ps), ECE=ece(Y, _ps))
+    for _k, _fn in (('AUROC', _auroc), ('Brier', _brier)):
+        _, _r[f'{_k}_ens_minus_seed_CI95_low'], _r[f'{_k}_ens_minus_seed_CI95_high'] = boot_diff(Y, p_twin, _ps, _fn)
+        _r[f'{_k}_ens_minus_seed'] = _fn(Y, p_twin) - _r[_k]
+    _rows.append(_r)
+tblK = pd.DataFrame(_rows)
+_summ = tblK[['AUROC', 'AUPRC', 'Brier', 'ECE']].agg(['mean', 'std', 'min', 'max'])
+_summ.index = [f'single seed ({s})' for s in _summ.index]
+tblK = pd.concat([tblK, _summ.reset_index().rename(columns={'index': 'model'}),
+                  pd.DataFrame([dict(model=f'ensemble ({len(TW)} seeds)', AUROC=_auroc(Y, p_twin), AUPRC=_auprc(Y, p_twin),
+                                     Brier=_brier(Y, p_twin), ECE=ece(Y, p_twin))])], ignore_index=True).round(4)
+print('Table K — single twin seeds vs ensemble (full recording; paired bootstrap of ensemble minus seed):'); display(tblK)
+(METRICS_DIR / 'twin').mkdir(parents=True, exist_ok=True)
+tblK.to_csv(METRICS_DIR / 'twin' / 'metrics_K_ensemble_vs_single_seed.csv', index=False)
 def conf_df(y, p, thr, lbls=('poor', 'good')):
     cm = confusion_matrix(y, (p >= thr).astype(int), labels=[0, 1]); return pd.DataFrame(cm, index=[f'true {lbls[0]}', f'true {lbls[1]}'], columns=[f'pred {lbls[0]}', f'pred {lbls[1]}'])
 cm05 = conf_df(Y, p_twin, 0.5); tstar = tpr_at_fpr(Y, p_twin, 0.05)[1]; cmhs = conf_df(Y, p_twin, tstar)
