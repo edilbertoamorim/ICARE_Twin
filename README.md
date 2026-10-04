@@ -76,6 +76,7 @@ the build is slower there than on a local disk.
 | `run_fig_prototypes` | embeddings | prototype figure | ~1 min |
 | `run_embedding_eval` | prep + embeddings | metrics *(optional)* | ~4 min |
 | `run_retrieval_ablation` | handoffs | ablation table *(optional)* | ~3 s |
+| `run_baselines` | step-4 handoff | clinical-only and HMM baselines vs the twin *(optional)* | ~2 min |
 
 ## Output
 

@@ -48,6 +48,7 @@ STEPS = [
     ('prototype figure',  'run_fig_prototypes.py',     EMB,          [FIGS / 'Fig_prototypes_ICARE_0279.png'], False, True),
     ('embedding metrics', 'run_embedding_eval.py',     PREP + EMB,   [],    True,  False),
     ('retrieval ablation','run_retrieval_ablation.py', TWIN,         [],    True,  True),
+    ('baselines',         'run_baselines.py',          TWIN,         [],    True,  True),
     ('export for twin',   'run_export_for_twin.py',    PPNET + EMB,
      [TWIN_NPZ['train']], False, False),
     ('train twin',        'run_train_twin.py',         [TWIN_NPZ['train'], CLINICAL],
@@ -58,7 +59,7 @@ STEPS = [
 ORDER = ['run_build_dataset', 'run_cebra_features', 'run_train_cebra',
          'run_export_for_twin', 'run_train_twin', 'run_fig_globes',
          'run_fig_twin', 'run_fig_prototypes', 'run_embedding_eval',
-         'run_retrieval_ablation']
+         'run_retrieval_ablation', 'run_baselines']
 STEPS.sort(key=lambda st: ORDER.index(st[1][:-3]))
 FIGURE_STEPS = ('run_fig_globes', 'run_fig_twin', 'run_fig_prototypes')
 
