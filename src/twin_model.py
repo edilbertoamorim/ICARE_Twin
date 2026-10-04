@@ -1070,6 +1070,34 @@ for K in [6, 12, 18, 24]:                                     # does rolling the
 tblH = pd.DataFrame(rows_rf).T; print('Table H — digital-twin roll-forward vs direct (early cutoffs):'); display(tblH)
 tblI = pd.DataFrame({k: {'forecast_skill_vs_persistence_%': round(v, 2)} for k, v in skill.items()}).T
 print('Table I — forecast head skill vs persistence, per feature group:'); display(tblI)
+# Table J — the Figure 1 input ablation, saved: hour-by-hour AUROC (available cases) and full-recording
+# discrimination + calibration with 95% patient-level bootstrap CIs. Each feature set is a reference-
+# architecture ensemble (N_ABL seeds); 'Clinical' is a logistic regression on the 5 admission variables.
+_pstep('Table J — input ablation metrics')
+_abl_m = [('AUROC', _auroc), ('AUPRC', _auprc), ('Brier', _brier), ('ECE', ece),
+          ('cal_slope', lambda y, p: cal_slope_intercept(y, p)[0]), ('cal_intercept', lambda y, p: cal_slope_intercept(y, p)[1])]
+_rows = []
+for _name in _bar(list(SPEC), 'ablation metrics', total=len(SPEC), unit='set'):
+    _h, _p = SC[_name]; _r = dict(feature_set=_name, N=int(len(Y)))
+    _r.update({f'AUROC_{h}h': float(a) for h, a in zip(KS, _h)})
+    for _k, _fn in _abl_m:
+        _r[_k] = _fn(Y, _p); _, _r[f'{_k}_CI95_low'], _r[f'{_k}_CI95_high'] = boot_ci(Y, _p, _fn)
+    _rows.append(_r)
+tblJ = pd.DataFrame(_rows).round(4)
+# paired bootstrap (same resampled patients in both arms): does adding clinical change an EEG-based model?
+_rows = []
+for _a, _b in [('ProtoPNet+EEG+Clinical', 'ProtoPNet+EEG'), ('CEBRA+EEG+Clinical', 'CEBRA+EEG'),
+               ('ProtoPNet+Clinical', 'ProtoPNet'), ('CEBRA+Clinical', 'CEBRA'),
+               ('ProtoPNet+EEG', 'Clinical'), ('ProtoPNet+EEG+Clinical', 'Clinical')]:
+    for _k, _fn in _abl_m[:4]:
+        _, _lo, _hi = boot_diff(Y, SC[_a][1], SC[_b][1], _fn)
+        _rows.append(dict(comparison=f'{_a} minus {_b}', metric=_k, diff=_fn(Y, SC[_a][1]) - _fn(Y, SC[_b][1]), CI95_low=_lo, CI95_high=_hi))
+tblJ2 = pd.DataFrame(_rows).round(4)
+print('Table J — input ablation (full recording, 95% bootstrap CIs):'); display(tblJ)
+print('Table J2 — paired bootstrap differences between feature sets:'); display(tblJ2)
+(METRICS_DIR / 'twin').mkdir(parents=True, exist_ok=True)
+tblJ.to_csv(METRICS_DIR / 'twin' / 'metrics_J_ablation.csv', index=False)
+tblJ2.to_csv(METRICS_DIR / 'twin' / 'metrics_J2_ablation_paired_diffs.csv', index=False)
 
 # ===================== cell 44 =====================
 _stage(27, 27, 'metrics — write tables')
