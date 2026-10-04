@@ -1088,6 +1088,44 @@ print('Confusion @ 0.5 (twin):'); display(cm05); print(f'Confusion @ high-specif
 tblSW = pd.DataFrame({f'{t:.1f}': thr_metrics(Y, p_twin, t) for t in np.round(np.arange(0.1, 0.91, 0.1), 1)}).T[['sensitivity', 'specificity', 'ppv', 'npv', 'f1', 'accuracy', 'balanced_acc']].round(4)
 tblSW.index.name = 'threshold (P good)'
 print('Table D2 — threshold sweep (digital twin, good direction):'); display(tblSW)
+# Table N / Figure 8 — decision-curve analysis (net benefit). NB(pt) = TP/n - FP/n * pt/(1-pt), where pt is
+# the risk threshold at which a clinician would act. Two framings: act on predicted POOR outcome (risk = 1 - P(good))
+# and act on predicted GOOD outcome. Compared with treat-all / treat-none and the clinical-only logistic regression
+# (Figure 1 ablation). Full recording and 24 h (available cases); temperature-scaled twin uses the held-out T.
+_pstep('Table N — decision-curve analysis')
+def _nb(event, risk, pt):
+    act = risk >= pt; n = len(event)
+    return ((act & (event == 1)).sum() - (act & (event == 0)).sum() * pt / (1 - pt)) / n
+_PT = np.round(np.arange(0.05, 0.951, 0.05), 2)
+_l24, _v24 = TW_LOGIT[np.arange(len(Y)), np.where(bmte[:, :24] > 0, np.arange(24)[None, :], -1).max(1).clip(0)], twin_p_at(24)[1]
+_dca_sets = {'full recording': (np.ones(len(Y), bool), {'digital twin (temp-scaled)': p_twin_cal, 'digital twin (raw)': p_twin,
+                                                       'clinical only (logistic)': SC['Clinical'][1]}),
+             '24 h': (_v24, {'digital twin (temp-scaled)': _sig(_l24 / T), 'digital twin (raw)': _sig(_l24),
+                             'clinical only (logistic)': SC['Clinical'][1]})}
+_rows = []
+for _win, (_m, _models) in _dca_sets.items():
+    for _dir in ('poor', 'good'):
+        _ev = (1 - Y[_m]) if _dir == 'poor' else Y[_m]
+        for _pt in _PT:
+            _r = dict(window=_win, act_on=f'predicted {_dir}', threshold=_pt, N=int(_m.sum()),
+                      treat_all=_nb(_ev, np.ones(len(_ev)), _pt), treat_none=0.0)
+            for _mn, _pg in _models.items():
+                _r[_mn] = _nb(_ev, (1 - _pg[_m]) if _dir == 'poor' else _pg[_m], _pt)
+            _rows.append(_r)
+tblN = pd.DataFrame(_rows).round(4)
+print('Table N — net benefit by threshold:'); print(tblN.to_string(index=False))
+fig, axes = plt.subplots(2, 2, figsize=(12, 9), sharex=True)
+for (_win, _dir), ax in zip([(w, d) for w in _dca_sets for d in ('poor', 'good')], axes.ravel()):
+    _d = tblN[(tblN.window == _win) & (tblN.act_on == f'predicted {_dir}')]
+    for _c, _st in [('digital twin (temp-scaled)', 'o-'), ('digital twin (raw)', 's--'), ('clinical only (logistic)', '^:'), ('treat_all', '-'), ('treat_none', '-')]:
+        ax.plot(_d.threshold, _d[_c], _st, lw=1.8, ms=4, label=_c.replace('_', ' '), color={'treat_all': '0.5', 'treat_none': 'k'}.get(_c))
+    _top = _d[[c for c in _d.columns if c not in ('window', 'act_on', 'threshold', 'N')]].values.max()
+    ax.set_ylim(-0.05, _top + 0.05); ax.set_title(f'{_win} — act on predicted {_dir} outcome (N={int(_d.N.iloc[0])})')
+    ax.set_xlabel('threshold probability'); ax.set_ylabel('net benefit'); ax.grid(alpha=0.3)
+axes[0, 0].legend(fontsize=8)
+fig.suptitle('Figure 8 — Decision-curve analysis'); fig.tight_layout(); fig.savefig(FIG_TWIN / 'fig8_decision_curve.png', dpi=130); plt.show()
+(METRICS_DIR / 'twin').mkdir(parents=True, exist_ok=True)
+tblN.to_csv(METRICS_DIR / 'twin' / 'metrics_N_decision_curve.csv', index=False)
 
 # ===================== cell 42 =====================
 _stage(25, 27, 'metrics — hour by hour')
