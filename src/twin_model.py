@@ -1047,6 +1047,25 @@ for nm, fn in [('AUROC', _auroc), ('AUPRC', _auprc), ('Brier (lower=better)', _b
     cmp[nm] = dict(twin=round(fn(Y[cc], p_twin[cc]), 4), reference=round(fn(Y[cc], p_ref[cc]), 4), diff_twin_minus_ref=round(d, 4), diff_CI95_low=round(lo, 4), diff_CI95_high=round(hi, 4))
 tblCMP = pd.DataFrame(cmp).T
 print('Table B2 — twin vs reference (paired bootstrap difference):'); display(tblCMP)
+# Table B3 — 95% percentile-bootstrap CIs for every reported model variant, incl. the temperature-scaled
+# Brier score. Unit of resampling = patient (one row per patient), 2000 resamples, seed 0 (boot_ci).
+# 'estimate' here is the point estimate on the full test set (Table B reports the bootstrap mean).
+_pstep('Table B3 — bootstrap CIs for raw / temperature-scaled / reference models')
+_ci_metrics = [('AUROC', _auroc), ('AUPRC', _auprc), ('Brier', _brier), ('ECE', ece),
+               ('cal_slope', lambda y, p: cal_slope_intercept(y, p)[0]),
+               ('cal_intercept', lambda y, p: cal_slope_intercept(y, p)[1])]
+_ci_models = {'digital twin (raw)': (Y, p_twin), 'digital twin (temp-scaled)': (Y, p_twin_cal),
+              'held-out-fold twin (raw)': (yt, p_raw), 'held-out-fold twin (temp-scaled)': (yt, p_cal),
+              'reference transformer': (Y[mref], p_ref[mref])}
+_rows = []
+for _mn, (_y, _p) in _bar(list(_ci_models.items()), 'bootstrap CIs', total=len(_ci_models), unit='model'):
+    for _k, _fn in _ci_metrics:
+        _, _lo, _hi = boot_ci(_y, _p, _fn)
+        _rows.append(dict(model=_mn, metric=_k, N=int(len(_y)), estimate=_fn(_y, _p), CI95_low=_lo, CI95_high=_hi))
+tblB3 = pd.DataFrame(_rows).round(4)
+print(f'Table B3 — point estimates with 95% bootstrap CIs (temperature T={T:.2f}, fit on the held-out training fold):'); display(tblB3)
+(METRICS_DIR / 'twin').mkdir(parents=True, exist_ok=True)
+tblB3.to_csv(METRICS_DIR / 'twin' / 'metrics_B3_bootstrap_CI_all_models.csv', index=False)
 
 # ===================== cell 41 =====================
 _stage(24, 27, 'metrics — operating points')
