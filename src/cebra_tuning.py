@@ -157,7 +157,8 @@ def main():
             row = dict(config=tag(gp), fold=fi, TEMPERATURE=gp['TEMPERATURE'], NUM_UNITS=gp['NUM_UNITS'],
                        LABEL_KEYS_DISC='+'.join(gp['LABEL_KEYS_DISC']), **r)
             pd.DataFrame([row]).to_csv(CV_CSV, mode='a', header=not CV_CSV.exists(), index=False)
-            log(f'    {tag(gp)} fold {fi}: AUROC {r["AUROC_logistic_all"]:.4f}')
+            log(f'    {tag(gp)} fold {fi + 1}: validation AUROC {r["AUROC_logistic_all"]:.4f} '
+                f'(saved to {CV_CSV.name})')
 
     step('summarising')
     cv = pd.read_csv(CV_CSV)
