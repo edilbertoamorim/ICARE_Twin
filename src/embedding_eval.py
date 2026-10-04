@@ -229,6 +229,73 @@ for d, (a, b) in sorted_pairs[-3:]:
     print(f"    {a} <-> {b}: {d:.4f}")
 
 # ═══════════════════════════════════════════════════════════════════
+# C6: Outcome separation on HELD-OUT patients (patient level)
+# ═══════════════════════════════════════════════════════════════════
+# T2 above scores segments, which are correlated within a patient. Here the
+# unit is the patient: each patient is the mean of its embedded segments
+# (all hours, or the first 24 h). Classifiers are fit on TRAIN patients and
+# scored on TEST patients, whose labels never enter CEBRA. Note: TRAIN.
+# LABEL_KEYS_DISC decides whether the training objective itself saw the
+# outcome; it is recorded in the output so the numbers are read correctly.
+print("\n=== C6: Held-out patient-level outcome separation ===")
+import pandas as pd
+from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
+from config import METRICS_DIR, TRAIN as _TRAIN
+
+_outcome_sup = 'cpc_binary' in _TRAIN['LABEL_KEYS_DISC'] + _TRAIN['LABEL_KEYS_CONT']
+print(f"  CEBRA objectives: {_TRAIN['LABEL_KEYS_DISC'] + _TRAIN['LABEL_KEYS_CONT']}"
+      f" -> train-patient outcome {'WAS' if _outcome_sup else 'was NOT'} used to train the embedding")
+
+def patient_means(emb, prep_d, max_h=None):
+    pid = prep_d['patient_ids']; good = (prep_d['cpc_binary'] == 0).astype(int)
+    keep = np.ones(len(pid), bool) if max_h is None else prep_d['times'] < max_h * 3600
+    u = np.unique(pid[keep])
+    X = np.stack([emb[keep & (pid == q)].mean(0) for q in u])
+    y = np.array([good[pid == q][0] for q in u])
+    return X / np.linalg.norm(X, axis=1, keepdims=True).clip(1e-12), y
+
+def _boot_auc(y, p, n=2000, seed=0):
+    r = np.random.RandomState(seed)
+    v = [roc_auc_score(y[i], p[i]) for i in (r.randint(0, len(y), len(y)) for _ in range(n)) if len(np.unique(y[i])) > 1]
+    return (np.percentile(v, 2.5), np.percentile(v, 97.5)) if v else (np.nan, np.nan)
+
+def _perm_p(y, p, obs, n=2000, seed=0):
+    r = np.random.RandomState(seed)
+    return (1 + sum(roc_auc_score(r.permutation(y), p) >= obs for _ in range(n))) / (n + 1)
+
+rows_c6 = []
+for win, mh in (('all hours', None), ('first 24 h', 24)):
+    Xtr_p, ytr_p = patient_means(X_train_emb, train_prep, mh)
+    Xte_p, yte_p = patient_means(X_test_emb, test_prep, mh)
+    for name, clf in (('logistic', LogisticRegression(max_iter=1000)),
+                      ('kNN (k=15, cosine)', KNeighborsClassifier(min(15, len(ytr_p) - 1), metric='cosine'))):
+        clf.fit(Xtr_p, ytr_p)
+        for split, Xs, ys in (('train (in-sample)', Xtr_p, ytr_p), ('test (held-out)', Xte_p, yte_p)):
+            pr = clf.predict_proba(Xs)[:, 1]; a = roc_auc_score(ys, pr)
+            lo, hi = _boot_auc(ys, pr)
+            rows_c6.append(dict(window=win, classifier=name, split=split, N=len(ys), N_good=int(ys.sum()),
+                                AUROC=a, CI95_low=lo, CI95_high=hi,
+                                perm_p=_perm_p(ys, pr, a) if split.startswith('test') else np.nan,
+                                outcome_used_in_cebra_training=_outcome_sup))
+    # geometry: cosine distance between the good and poor test-patient centroids, permutation null
+    cg, cp = Xte_p[yte_p == 1].mean(0), Xte_p[yte_p == 0].mean(0)
+    dist = 1 - cg @ cp / (np.linalg.norm(cg) * np.linalg.norm(cp))
+    r = np.random.RandomState(0); null = []
+    for _ in range(2000):
+        yy = r.permutation(yte_p); a, b = Xte_p[yy == 1].mean(0), Xte_p[yy == 0].mean(0)
+        null.append(1 - a @ b / (np.linalg.norm(a) * np.linalg.norm(b)))
+    rows_c6.append(dict(window=win, classifier='centroid cosine distance (good vs poor)', split='test (held-out)',
+                        N=len(yte_p), N_good=int(yte_p.sum()), AUROC=np.nan, CI95_low=np.nan, CI95_high=np.nan,
+                        perm_p=(1 + sum(n >= dist for n in null)) / 2001, centroid_distance=dist,
+                        outcome_used_in_cebra_training=_outcome_sup))
+c6 = pd.DataFrame(rows_c6).round(4)
+print(c6.to_string(index=False))
+(METRICS_DIR / 'cebra').mkdir(parents=True, exist_ok=True)
+c6.to_csv(METRICS_DIR / 'cebra' / f'cebra_outcome_separation_{RUN_TAG}.csv', index=False)
+print(f"  Saved metrics/cebra/cebra_outcome_separation_{RUN_TAG}.csv")
+
+# ═══════════════════════════════════════════════════════════════════
 # Summary
 # ═══════════════════════════════════════════════════════════════════
 print("\n" + "=" * 60)
