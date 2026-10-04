@@ -692,6 +692,28 @@ ax.axhline(0, color='k', lw=0.8); ax.set_xticks(range(len(skill))); ax.set_xtick
 ax.set_ylabel('forecast skill vs persistence (%)'); ax.set_title('Figure 3 — Forecast head vs persistence'); ax.grid(alpha=0.3, axis='y')
 fig.tight_layout(); fig.savefig(FIG_TWIN / 'fig3.png', dpi=130); plt.show()
 print({k: round(v, 1) for k, v in skill.items()})
+# Table I2 — the numbers behind forecast skill. skill = 100 * (1 - MSE_model / MSE_persistence), where both
+# MSEs are pooled over every (block t -> block t+1) pair with both blocks observed, in the standardized
+# summary space (train-fit z-scores), and persistence predicts block t+1 = block t. 95% CI: patients
+# resampled with replacement (2000x), pooled MSEs recomputed per resample.
+_pstep('Table I2 — forecast errors, model vs persistence, with patient-bootstrap CIs')
+_rows = []; _rng = np.random.RandomState(0); _boot_ix = [_rng.randint(0, len(y_test), len(y_test)) for _ in range(2000)]
+for _g, _sl in {**GROUPS, 'overall': slice(None)}.items():
+    _em = ((fc[:, :-1, _sl] - FT_te[:, 1:, _sl]) ** 2).mean(-1) * fmask            # (N, 83), 0 off-mask
+    _ep = ((FT_te[:, :-1, _sl] - FT_te[:, 1:, _sl]) ** 2).mean(-1) * fmask
+    _am = np.abs(fc[:, :-1, _sl] - FT_te[:, 1:, _sl]).mean(-1) * fmask
+    _ap = np.abs(FT_te[:, :-1, _sl] - FT_te[:, 1:, _sl]).mean(-1) * fmask
+    _n = fmask.sum(1); _sm, _sp = _em.sum(1), _ep.sum(1)
+    _bs = [100 * (1 - _sm[b].sum() / _sp[b].sum()) for b in _boot_ix if _sp[b].sum() > 0]
+    _rows.append(dict(group=_g, n_pairs=int(_n.sum()), n_patients=int((_n > 0).sum()),
+                      MSE_model=_sm.sum() / _n.sum(), MSE_persistence=_sp.sum() / _n.sum(),
+                      MAE_model=_am.sum() / _n.sum(), MAE_persistence=_ap.sum() / _n.sum(),
+                      skill_pct=100 * (1 - _sm.sum() / _sp.sum()),
+                      skill_CI95_low=np.percentile(_bs, 2.5), skill_CI95_high=np.percentile(_bs, 97.5)))
+tblI2 = pd.DataFrame(_rows).round(5)
+print('Table I2 — forecast head vs persistence (standardized units):'); print(tblI2.to_string(index=False))
+(METRICS_DIR / 'twin').mkdir(parents=True, exist_ok=True)
+tblI2.to_csv(METRICS_DIR / 'twin' / 'metrics_I2_forecast_errors.csv', index=False)
 
 # ===================== cell 25 =====================
 _stage(15, 27, 'Figure 4 — calibration (TRAINS two more ensembles)')
