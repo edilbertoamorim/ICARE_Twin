@@ -858,6 +858,36 @@ fig.supxlabel('hours', fontsize=11); fig.supylabel('label frequency', fontsize=1
 fig.suptitle(f'Figure 7 — Forecast head reproducing label frequencies ({TEST_PIDS[EX]}, true {"good" if y_test[EX] else "poor"})', fontsize=13)
 fig.savefig(FIG_TWIN / 'fig7.png', dpi=130, bbox_inches='tight'); plt.show()
 print('Figure 7 patient:', TEST_PIDS[EX])
+# Table L — error accumulation in the autoregressive roll-forward. From each start hour K the ensemble
+# feeds its own forecasts back in (roll_features, no real EEG after K); the forecast for block K-1+h is
+# scored against the real summary at that block, h hours ahead. Baseline = persistence of the last observed
+# block <= K. Scored only where the target block was observed. Standardized summary units; patient-bootstrap CI.
+_pstep('Table L — roll-forward error by forecast horizon')
+_rows = []; _rng = np.random.RandomState(0)
+_IIIC = GROUPS['IIIC probs']
+for _K in _bar([6, 12, 24, 36, 48], 'roll-forward start hours', total=5, unit='start'):
+    _fc = np.mean([roll_features(m, Xf_te, bmte, _K) for m in TW], 0)          # (N, 84, rd)
+    _has = bmte[:, :_K] > 0; _ok = _has.any(1)
+    _lastb = np.where(_has, np.arange(_K)[None, :], -1).max(1).clip(0)
+    _pers = FT_te[np.arange(len(FT_te)), _lastb]                                 # (N, rd)
+    for _h in (1, 3, 6, 12, 24):
+        _t = _K - 1 + _h
+        if _t >= BLK: continue
+        _v = _ok & (bmte[:, _t] > 0)
+        if _v.sum() < 2: continue
+        for _g, _sl in (('overall', slice(None)), ('IIIC probs', _IIIC)):
+            _em = ((_fc[_v, _t, _sl] - FT_te[_v, _t, _sl]) ** 2).mean(-1); _ep = ((_pers[_v, _sl] - FT_te[_v, _t, _sl]) ** 2).mean(-1)
+            _bs = []
+            for _ in range(2000):
+                _b = _rng.randint(0, len(_em), len(_em))
+                if _ep[_b].sum() > 0: _bs.append(100 * (1 - _em[_b].sum() / _ep[_b].sum()))
+            _rows.append(dict(start_hour=_K, horizon_h=_h, group=_g, N=int(_v.sum()), MSE_rollforward=_em.mean(),
+                              MSE_persistence=_ep.mean(), skill_pct=100 * (1 - _em.sum() / _ep.sum()),
+                              skill_CI95_low=np.percentile(_bs, 2.5), skill_CI95_high=np.percentile(_bs, 97.5)))
+tblL = pd.DataFrame(_rows).round(4)
+print('Table L — roll-forward forecast error by horizon (model vs persistence):'); print(tblL.to_string(index=False))
+(METRICS_DIR / 'twin').mkdir(parents=True, exist_ok=True)
+tblL.to_csv(METRICS_DIR / 'twin' / 'metrics_L_rollforward_error_by_horizon.csv', index=False)
 
 
 # ===================== cell 33 =====================
