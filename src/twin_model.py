@@ -1051,6 +1051,37 @@ tblE = hourly_table(twin_p_at); tblE.index.name = 'hours'
 print('Table E — hour-by-hour metrics (digital twin):'); display(tblE)
 tblF = hourly_table(lambda h: (ref_hourly[h], covO[h])); tblF.index.name = 'hours'
 print('Table F — hour-by-hour metrics (reference transformer):'); display(tblF)
+# Table M — anytime discrimination on FIXED cohorts. Table E is available-case: its N grows with h (a
+# patient enters once their EEG has started), so AUROC changes mix more EEG per patient with a changing
+# patient mix. Here the cohort is fixed to patients with EEG by hour c and followed across later cutoffs.
+# Table M2 — when recordings start (first observed 1-h block), which sets the available-case N at each hour.
+_pstep('Table M — fixed-cohort anytime discrimination')
+_rows = []
+for _c in (6, 12, 24):
+    _coh = twin_p_at(_c)[1]
+    if _coh.sum() < 2: continue
+    for _h in [h for h in KS if h >= _c]:
+        _p = twin_p_at(_h)[0][_coh]; _y = Y[_coh]
+        _, _lo, _hi = boot_ci(_y, _p, _auroc); _, _blo, _bhi = boot_ci(_y, _p, _brier)
+        _rows.append(dict(cohort=f'EEG by {_c}h', hours=_h, N=int(_coh.sum()), N_good=int(_y.sum()), AUROC=_auroc(_y, _p),
+                          AUROC_CI95_low=_lo, AUROC_CI95_high=_hi, Brier=_brier(_y, _p), Brier_CI95_low=_blo, Brier_CI95_high=_bhi))
+for _h in KS:                                                  # available-case, same format, for side-by-side reading
+    _p, _v = twin_p_at(_h)
+    if _v.sum() < 2: continue
+    _, _lo, _hi = boot_ci(Y[_v], _p[_v], _auroc); _, _blo, _bhi = boot_ci(Y[_v], _p[_v], _brier)
+    _rows.append(dict(cohort='available cases', hours=_h, N=int(_v.sum()), N_good=int(Y[_v].sum()), AUROC=_auroc(Y[_v], _p[_v]),
+                      AUROC_CI95_low=_lo, AUROC_CI95_high=_hi, Brier=_brier(Y[_v], _p[_v]), Brier_CI95_low=_blo, Brier_CI95_high=_bhi))
+tblM = pd.DataFrame(_rows).round(4)
+_first_h = np.where(bmte.any(1), bmte.argmax(1) + 1, np.nan)    # hour of the first observed block
+tblM2 = pd.DataFrame([dict(hours=_h, N_with_EEG=int((_first_h <= _h).sum()), N_total=int(len(Y)),
+                           N_good_with_EEG=int(Y[_first_h <= _h].sum())) for _h in KS])
+tblM2.attrs['start'] = np.nanpercentile(_first_h, [25, 50, 75])
+print('Table M — fixed-cohort vs available-case anytime discrimination (digital twin):'); print(tblM.to_string(index=False))
+print(f'Table M2 — recording start (first observed hour): median {tblM2.attrs["start"][1]:.0f} h, '
+      f'IQR {tblM2.attrs["start"][0]:.0f}-{tblM2.attrs["start"][2]:.0f} h'); print(tblM2.to_string(index=False))
+(METRICS_DIR / 'twin').mkdir(parents=True, exist_ok=True)
+tblM.to_csv(METRICS_DIR / 'twin' / 'metrics_M_fixed_cohort_anytime.csv', index=False)
+tblM2.to_csv(METRICS_DIR / 'twin' / 'metrics_M2_recording_start.csv', index=False)
 
 # ===================== cell 43 =====================
 _stage(26, 27, 'metrics — calibration and roll-forward')
