@@ -648,6 +648,35 @@ ax.set_xlabel('hours of EEG used'); ax.set_ylabel('outcome AUC'); ax.set_ylim(0.
 ax.set_title('Figure 2 — Outcome head: reference transformer vs digital twin'); ax.legend(fontsize=9); ax.grid(alpha=0.3)
 fig.tight_layout(); fig.savefig(FIG_TWIN / 'fig2.png', dpi=130); plt.show()
 print({h: round(tw_h[h], 3) for h in KS})
+# Table O — is distillation needed? Retrain the twin ensemble (same seeds, same CFG2) WITHOUT the teacher:
+# hard-label loss only (hard_w=1, distill_w=0, no soft targets); every other loss term is unchanged.
+# Compared with the deployed distilled twin, hour by hour and on the full recording, paired bootstrap.
+_pstep(f'distillation ablation: {N_TWIN} twin seeds trained without the teacher')
+from sklearn.metrics import average_precision_score as _aps
+TW_ND = [train_twin(CFG2, sd, Xf_tr, bmtr, FT_tr, y_train, AUX=AUXTR, soft=None, hard_w=1.0, distill_w=0.0)
+         for sd in _bar(range(7, 7 + 10 * N_TWIN, 10), 'no-distill twin seeds', total=N_TWIN, unit='seed')]
+_lg_d = np.mean([predict_twin(m, Xf_te, bmte)[0] for m in TW], 0); _lg_n = np.mean([predict_twin(m, Xf_te, bmte)[0] for m in TW_ND], 0)
+def _at(lg, h):
+    cap = min(h, BLK); o = bmte[:, :cap]; k = np.where(o > 0, np.arange(cap)[None, :], -1).max(1)
+    return 1 / (1 + np.exp(-lg[np.arange(len(lg)), k.clip(0)])), o.sum(1) > 0
+def _pboot(y, pa, pb, fn, n=2000, seed=0):
+    r = np.random.RandomState(seed); v = []
+    for _ in range(n):
+        i = r.randint(0, len(y), len(y))
+        if len(np.unique(y[i])) > 1: v.append(fn(y[i], pa[i]) - fn(y[i], pb[i]))
+    return (float(np.percentile(v, 2.5)), float(np.percentile(v, 97.5))) if v else (np.nan, np.nan)
+_rows = []
+for _h in KS:
+    (_pd, _v), (_pn, _) = _at(_lg_d, _h), _at(_lg_n, _h); _y = y_test[_v]
+    if _v.sum() < 2 or len(np.unique(_y)) < 2: continue
+    for _k, _fn in (('AUROC', auc), ('AUPRC', lambda y, p: float(_aps(y, p))), ('Brier', brier_score_loss)):
+        _lo, _hi = _pboot(_y, _pd[_v], _pn[_v], _fn)
+        _rows.append(dict(hours=_h, N=int(_v.sum()), metric=_k, distilled=_fn(_y, _pd[_v]), no_distill=_fn(_y, _pn[_v]),
+                          diff_distilled_minus_no_distill=_fn(_y, _pd[_v]) - _fn(_y, _pn[_v]), diff_CI95_low=_lo, diff_CI95_high=_hi))
+tblO = pd.DataFrame(_rows).round(4)
+print('Table O — distilled twin vs twin trained without distillation (paired bootstrap):'); print(tblO.to_string(index=False))
+(METRICS_DIR / 'twin').mkdir(parents=True, exist_ok=True)
+tblO.to_csv(METRICS_DIR / 'twin' / 'metrics_O_distillation_ablation.csv', index=False)
 
 # ===================== cell 23 =====================
 _stage(14, 27, 'Figure 3 — forecast skill')
