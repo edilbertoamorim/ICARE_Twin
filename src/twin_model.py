@@ -6,6 +6,9 @@ Mirrors notebooks/transformer_twin.ipynb cell for cell, unmodified except:
   * matplotlib runs headless and plt.show() is a no-op
   * seed counts, epoch cap, device and an optional patient subset come from
     config.TWIN_TRAIN so a smoke run is possible without editing the science
+  * evaluation blocks added after the notebook (extra metrics tables, a
+    causality check, a distillation ablation) — each writes its own file under
+    metrics/twin/ and leaves the notebook's models and outputs unchanged
 
 Reads   <out>/PPNet Data {Train,Test} with CEBRA COMBO V.npz   (the export-for-twin step)
         data/tables/ICARE_clinical.csv
