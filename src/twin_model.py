@@ -590,6 +590,44 @@ tw_prob = 1 / (1 + np.exp(-np.mean([predict_twin(m, Xf_te, bmte)[0] for m in TW]
 # which summary-vector columns belong to each feature group (for Figure 3)
 GROUPS = {'IIIC probs': slice(0, 8), 'qEEG': slice(8, 21), 'prototype acts': slice(21, 66), 'ProtoPNet PCA': slice(66, 98)}
 print('twin trained', len(TW), 'seeds')
+# Causality check — empirical, on the trained twin and the real test features. For each cutoff K the
+# future is overwritten with random values (features, mask, and the raw 5-min streams); every output that
+# should only see blocks < K must be bit-for-bit unchanged. Stops the run if anything leaks.
+_pstep('causality check — perturb the future, verify the past is unchanged')
+def _causality_check(model, cutoffs=(6, 12, 24, 48), seed=0, n_feat=32):
+    rng = np.random.RandomState(seed); rows = []
+    X0, M0, C0 = X_ms_te[:n_feat], M_ms_te[:n_feat], C_test_s[:n_feat]
+    for K in cutoffs:
+        s = K * BSZ
+        # (a) model: outcome / forecast / hidden at blocks < K vs perturbed features and mask at blocks >= K
+        # the last n_clin columns are the admission clinical variables, identical at every block by
+        # construction (known at hour 0); roll_forward carries them forward, so they stay real here
+        n_clin = C_test_s.shape[1]
+        Xp = Xf_te.copy(); Xp[:, K:, :-n_clin] = rng.randn(*Xp[:, K:, :-n_clin].shape).astype(np.float32) * 5
+        Bp = bmte.copy(); Bp[:, K:] = 1.0 - Bp[:, K:]
+        a, b = predict_twin(model, Xf_te, bmte), predict_twin(model, Xp, Bp)
+        d_model = max(float(np.abs(x[:, :K] - y[:, :K]).max()) for x, y in zip(a, b))
+        # (b) features: raw 5-min streams + mask perturbed from slot K*BSZ on -> block features < K
+        #     (first n_feat test patients only: the raw streams are ~5 MB per patient)
+        Xm = X0.copy(); Xm[:, :, s:] = rng.randn(*Xm[:, :, s:].shape).astype(np.float32) * 5
+        Mm = M0.copy(); Mm[:, s:] = 1.0 - Mm[:, s:]
+        f0 = make_features(BREF, X0, M0, C0); f1 = make_features(BREF, Xm, Mm, C0)
+        d_feat = max(float(np.abs(f0[0][:, :K] - f1[0][:, :K]).max()), float(np.abs(f0[2][:, :K] - f1[2][:, :K]).max()))
+        # (c) roll-forward from K must ignore everything at blocks >= K
+        d_roll = float(np.abs(roll_forward(model, Xf_te, bmte, K)[0] - roll_forward(model, Xp, Bp, K)[0]).max())
+        rows.append(dict(cutoff_h=K, max_abs_diff_model=d_model, max_abs_diff_features=d_feat, max_abs_diff_rollforward=d_roll))
+    # (d) unobserved 5-min slots carry a fill value; it must never reach the features
+    Xu = np.where(M0[:, None, :] > 0, X0, rng.randn(*X0.shape).astype(np.float32) * 5)
+    d_fill = float(np.abs(make_features(BREF, X0, M0, C0)[0] - make_features(BREF, Xu, M0, C0)[0]).max())
+    return pd.DataFrame(rows), d_fill
+tblCAUSAL, _d_fill = _causality_check(TW[0])
+print(tblCAUSAL.to_string(index=False)); print(f'unobserved-slot fill -> features, max abs diff: {_d_fill:.3g}')
+(METRICS_DIR / 'twin').mkdir(parents=True, exist_ok=True)
+tblCAUSAL.assign(max_abs_diff_unobserved_fill=_d_fill).to_csv(METRICS_DIR / 'twin' / 'causality_check.csv', index=False)
+_tol = 1e-5
+if (tblCAUSAL.drop(columns='cutoff_h').values > _tol).any() or _d_fill > _tol:
+    raise SystemExit('CAUSALITY CHECK FAILED: future or unobserved data changed earlier outputs (see causality_check.csv)')
+_pstep(f'causality check passed (all differences <= {_tol})')
 
 # ===================== cell 19 =====================
 _stage(12, 27, 'Figure 1 — input ablation (RETRAINS PER FEATURE SET, the longest block)')
