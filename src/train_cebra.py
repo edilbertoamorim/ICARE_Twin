@@ -122,7 +122,9 @@ def fit(X, pat_starts, pat_ends, labels, cfg, device, verbose=True, desc=None):
     out(f"  TIME_OFFSET={cfg['TIME_OFFSET']} bins ({cfg['TIME_OFFSET']*5} min)")
     out(f"  TEMP={cfg['TEMPERATURE']}  NUM_UNITS={cfg['NUM_UNITS']}  LR={cfg['LR']}")
 
-    pbar = trange(cfg['MAX_ITER'], desc=desc, leave=verbose)
+    # verbose=False (tuning) runs inside an outer progress bar: a nested per-iteration
+    # bar prints a new line per refresh in Colab/pipe output, so it is switched off
+    pbar = trange(cfg['MAX_ITER'], desc=desc, disable=not verbose)
     for step in pbar:
         ref_idx = torch.randint(0, N, (B,), device=device)
         neg_idx = torch.randint(0, N, (B,), device=device)
