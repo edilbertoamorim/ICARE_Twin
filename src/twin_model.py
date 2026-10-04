@@ -597,7 +597,10 @@ def _causality_check(model, cutoffs=(6, 12, 24, 48), seed=0, n_feat=32):
     for K in cutoffs:
         s = K * BSZ
         # (a) model: outcome / forecast / hidden at blocks < K vs perturbed features and mask at blocks >= K
-        Xp = Xf_te.copy(); Xp[:, K:] = rng.randn(*Xp[:, K:].shape).astype(np.float32) * 5
+        # the last n_clin columns are the admission clinical variables, identical at every block by
+        # construction (known at hour 0); roll_forward carries them forward, so they stay real here
+        n_clin = C_test_s.shape[1]
+        Xp = Xf_te.copy(); Xp[:, K:, :-n_clin] = rng.randn(*Xp[:, K:, :-n_clin].shape).astype(np.float32) * 5
         Bp = bmte.copy(); Bp[:, K:] = 1.0 - Bp[:, K:]
         a, b = predict_twin(model, Xf_te, bmte), predict_twin(model, Xp, Bp)
         d_model = max(float(np.abs(x[:, :K] - y[:, :K]).max()) for x, y in zip(a, b))
